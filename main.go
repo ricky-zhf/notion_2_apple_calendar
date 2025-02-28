@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	ical "github.com/arran4/golang-ical"
@@ -108,7 +109,20 @@ func generateICS(c Conf, database *NotionDatabase) ([]byte, error) {
 }
 
 func main() {
-	confData, err := os.ReadFile("conf.json")
+	// 获取可执行文件的绝对路径
+	exePath, err := os.Executable()
+	if err != nil {
+		fmt.Printf("获取可执行文件路径失败: %v\n", err)
+		return
+	}
+
+	// 获取可执行文件所在目录
+	exeDir := filepath.Dir(exePath)
+
+	// 拼接配置文件的绝对路径
+	confPath := filepath.Join(exeDir, "conf.json")
+
+	confData, err := os.ReadFile(confPath)
 	if err != nil {
 		fmt.Printf("读取配置文件失败: %v\n", err)
 		return
