@@ -4,13 +4,19 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"time"
 
 	ical "github.com/arran4/golang-ical"
 )
+
+type Conf struct {
+	Key       string `json:"key"`
+	Path      string `json:"path"`
+	Databases string `json:"databases"`
+}
 
 // NotionDatabase 定义 Notion 数据库响应结构
 type NotionDatabase struct {
@@ -52,7 +58,7 @@ func getNotionDatabaseData(token, databaseID string) (*NotionDatabase, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +75,7 @@ func getNotionDatabaseData(token, databaseID string) (*NotionDatabase, error) {
 var layout = "2006-01-02T15:04:05.000Z07:00"
 
 // 生成 .ics 文件内容
-func generateICS(database *NotionDatabase) ([]byte, error) {
+func generateICS(c Conf, database *NotionDatabase) ([]byte, error) {
 	cal := ical.NewCalendar()
 	cal.SetMethod(ical.MethodPublish)
 	cal.SetProductId("-//Example//Example Calendar//EN")
@@ -102,7 +108,19 @@ func generateICS(database *NotionDatabase) ([]byte, error) {
 }
 
 func main() {
-	syncNotion()
+	confData, err := os.ReadFile("conf.json")
+	if err != nil {
+		fmt.Printf("读取配置文件失败: %v\n", err)
+		return
+	}
+	var conf Conf
+	err = json.Unmarshal(confData, &conf)
+	if err != nil {
+		fmt.Printf("解析配置文件失败: %v\n", err)
+		return
+	}
+
+	syncNotion(conf)
 	fmt.Println("get notion end...")
 
 	go runServer()
@@ -115,18 +133,18 @@ func main() {
 	for {
 		select {
 		case <-ticker.C:
-			syncNotion()
+			syncNotion(conf)
 		}
 	}
 }
 
-func syncNotion() {
+func syncNotion(c Conf) {
 	defer func() {
 		_ = recover()
 	}()
 	// 替换为你的 Notion API 密钥和数据库 ID
-	notionToken := "" // todo update
-	databaseID := "16eea8b06b7f8083b50bcd90ecb5397f"
+	notionToken := c.Key
+	databaseID := c.Databases
 	//https://www.notion.so/rickyzhf/16eea8b06b7f8083b50bcd90ecb5397f?v=16eea8b06b7f81009b03000c49e7c0b7&pvs=4
 
 	// 获取 Notion 数据库数据
@@ -137,14 +155,14 @@ func syncNotion() {
 	}
 
 	// 生成 .ics 文件内容
-	icsData, err := generateICS(database)
+	icsData, err := generateICS(c, database)
 	if err != nil {
 		//log.Fatalf("Failed to generate ICS data: %v", err)
 		return
 	}
 
 	// 保存 .ics 文件到本地
-	err = os.WriteFile("notion_calendar.ics", icsData, 0644)
+	err = os.WriteFile(fmt.Sprintf("%s/%s", c.Path, "notion_calendar.ics"), icsData, 0644)
 	if err != nil {
 		//log.Fatalf("Failed to save ICS file: %v", err)
 		return
