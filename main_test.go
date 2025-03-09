@@ -11,12 +11,12 @@ func addEventToCalendar(title, startTime, endTime string) error {
 	// 解析开始时间和结束时间
 	start, err := time.Parse("2006-01-02 15:04:05", startTime)
 	if err != nil {
-		fmt.Printf("解析开始时间失败: %v\n", err)
+		fmt.Printf("解析开始时间失败: %v", err)
 		return err
 	}
 	end, err := time.Parse("2006-01-02 15:04:05:", endTime)
 	if err != nil {
-		fmt.Printf("解析结束时间失败: %v\n", err)
+		fmt.Printf("解析结束时间失败: %v", err)
 		return err
 	}
 
@@ -33,7 +33,7 @@ func addEventToCalendar(title, startTime, endTime string) error {
 	cmd := exec.Command("osascript", "-e", script)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		fmt.Printf("执行命令失败: %v\n输出: %s\n", err, output)
+		fmt.Printf("执行命令失败: %v输出: %s", err, output)
 		return err
 	}
 	return nil
@@ -48,9 +48,13 @@ func Test_generateICS(t *testing.T) {
 
 	err := addEventToCalendar(title, startTime, endTime)
 	if err != nil {
-		fmt.Printf("添加事件失败: %v\n", err)
+		fmt.Printf("添加事件失败: %v", err)
 		return
 	}
 
 	fmt.Println("事件已成功添加到 Apple Calendar！")
+}
+
+func Test_update(t *testing.T) {
+	//update("")
 }

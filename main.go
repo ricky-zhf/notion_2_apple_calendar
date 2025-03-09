@@ -4,20 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 
 	ical "github.com/arran4/golang-ical"
 )
-
-type Conf struct {
-	Key       string `json:"key"`
-	Path      string `json:"path"`
-	Databases string `json:"databases"`
-}
 
 // NotionDatabase 定义 Notion 数据库响应结构
 type NotionDatabase struct {
@@ -39,6 +33,31 @@ type NotionDatabase struct {
 		} `json:"properties"`
 	} `json:"results"`
 }
+
+// NotionDatabase 定义 Notion 数据库响应结构
+//type NotionDatabase struct {
+//	Results []struct {
+//		Properties struct {
+//			Name struct {
+//				Title []struct {
+//					Text struct {
+//						Content string `json:"content"`
+//					} `json:"text"`
+//				} `json:"title"`
+//			} `json:"Name"`
+//			Start struct {
+//				Date struct {
+//					Start string `json:"start"`
+//				} `json:"date"`
+//			} `json:"Start"`
+//			End struct {
+//				Date struct {
+//					Start string `json:"start"`
+//				} `json:"date"`
+//			} `json:"End"`
+//		} `json:"properties"`
+//	} `json:"results"`
+//}
 
 // 获取 Notion 数据库数据
 func getNotionDatabaseData(token, databaseID string) (*NotionDatabase, error) {
@@ -73,7 +92,10 @@ func getNotionDatabaseData(token, databaseID string) (*NotionDatabase, error) {
 	return &database, nil
 }
 
-var layout = "2006-01-02T15:04:05.000Z07:00"
+var (
+	layout = "2006-01-02T15:04:05.000Z07:00"
+	exeDir string
+)
 
 // 生成 .ics 文件内容
 func generateICS(c Conf, database *NotionDatabase) ([]byte, error) {
@@ -109,37 +131,20 @@ func generateICS(c Conf, database *NotionDatabase) ([]byte, error) {
 }
 
 func main() {
-	// 获取可执行文件的绝对路径
-	exePath, err := os.Executable()
+	conf, err := InitConfig()
 	if err != nil {
-		fmt.Printf("获取可执行文件路径失败: %v\n", err)
-		return
+		logrus.Fatalf("Failed to init config: %v", err)
 	}
 
-	// 获取可执行文件所在目录
-	exeDir := filepath.Dir(exePath)
+	newApp()
 
-	// 拼接配置文件的绝对路径
-	confPath := filepath.Join(exeDir, "conf.json")
-
-	confData, err := os.ReadFile(confPath)
-	if err != nil {
-		fmt.Printf("读取配置文件失败: %v\n", err)
-		return
-	}
-	var conf Conf
-	err = json.Unmarshal(confData, &conf)
-	if err != nil {
-		fmt.Printf("解析配置文件失败: %v\n", err)
-		return
-	}
+	go runCron(conf)
 
 	syncNotion(conf)
-	fmt.Println("get notion end...")
+	logrus.Infof("get notion end...")
 
 	go runServer()
-
-	fmt.Println("start http end...")
+	logrus.Infof("start http end...")
 
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
@@ -159,40 +164,45 @@ func syncNotion(c Conf) {
 	// 替换为你的 Notion API 密钥和数据库 ID
 	notionToken := c.Key
 	databaseID := c.Databases
-	//https://www.notion.so/rickyzhf/16eea8b06b7f8083b50bcd90ecb5397f?v=16eea8b06b7f81009b03000c49e7c0b7&pvs=4
 
 	// 获取 Notion 数据库数据
 	database, err := getNotionDatabaseData(notionToken, databaseID)
 	if err != nil {
-		//log.Fatalf("Failed to get Notion database data: %v", err)
+		logrus.Infof("Failed to get Notion database data: %v", err)
 		return
 	}
 
 	// 生成 .ics 文件内容
 	icsData, err := generateICS(c, database)
 	if err != nil {
-		//log.Fatalf("Failed to generate ICS data: %v", err)
+		logrus.Infof("Failed to generate ICS data: %v", err)
 		return
 	}
 
 	// 保存 .ics 文件到本地
 	err = os.WriteFile(fmt.Sprintf("%s/%s", c.Path, "notion_calendar.ics"), icsData, 0644)
 	if err != nil {
-		//log.Fatalf("Failed to save ICS file: %v", err)
+		logrus.Infof("Failed to save ICS file: %v", err)
 		return
 	}
-
-	//fmt.Println("ICS file generated successfully.")
+	logrus.Infof("Notion file generated successfully.")
 }
 
 func serveICSFile(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "notion_calendar.ics")
+	logrus.Infof("Get http sync req...")
+
+	path := fmt.Sprintf("%s/%s", exeDir, "notion_calendar.ics")
+	http.ServeFile(w, r, path)
 }
 
 func runServer() {
-
 	http.HandleFunc("/calendar.ics", serveICSFile)
 
 	port := ":33189"
-	http.ListenAndServe(port, nil)
+	if isDev() {
+		port = ":33188"
+	}
+	if err := http.ListenAndServe(port, nil); err != nil {
+		logrus.Fatalf("Failed to start server: %v", err)
+	}
 }
