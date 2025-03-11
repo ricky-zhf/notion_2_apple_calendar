@@ -80,7 +80,7 @@ func runCron(conf Conf) {
 
 	// 2. 添加定时任务（每天 0 点 1 分执行, 0 1 * * * *
 	// @every 1m
-	execTime := "0 0 1 * * *"
+	execTime := "0 1 0 * * *"
 	if isDev() {
 		execTime = "@every 1m"
 	}

@@ -3,13 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"github.com/sirupsen/logrus"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 type Conf struct {
@@ -54,9 +55,6 @@ func InitConfig() (conf Conf, err error) {
 }
 
 func initLogger(path string) {
-	//if isDev() {
-	//	return
-	//}
 	// 创建日志文件
 	logPath := filepath.Join(path, "notion2apple-prod.log")
 	if isDev() {
