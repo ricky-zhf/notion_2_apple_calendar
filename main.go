@@ -7,7 +7,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"io"
 	"net/http"
-	"os"
 	"time"
 
 	ical "github.com/arran4/golang-ical"
@@ -142,10 +141,10 @@ func main() {
 
 	_ = update(conf)
 
-	syncNotion(conf)
+	_ = syncNotion(conf)
 	logrus.Infof("get notion end...")
 
-	go runServer(conf)
+	runServer(conf)
 	//logrus.Infof("start http end...")
 	//
 	//ticker := time.NewTicker(1 * time.Minute)
@@ -159,9 +158,11 @@ func main() {
 	//}
 }
 
-func syncNotion(c Conf) {
+func syncNotion(c Conf) []byte {
 	defer func() {
-		_ = recover()
+		if r := recover(); r != nil {
+			logrus.Errorf("syncNotion panic, err:%v", r)
+		}
 	}()
 	// 替换为你的 Notion API 密钥和数据库 ID
 	notionToken := c.Key
@@ -170,30 +171,32 @@ func syncNotion(c Conf) {
 	// 获取 Notion 数据库数据
 	database, err := getNotionDatabaseData(notionToken, databaseID)
 	if err != nil {
-		logrus.Infof("Failed to get Notion database data: %v", err)
-		return
+		logrus.Errorf("Failed to get Notion database data: %v", err)
+		return nil
 	}
 
 	// 生成 .ics 文件内容
 	icsData, err := generateICS(c, database)
 	if err != nil {
-		logrus.Infof("Failed to generate ICS data: %v", err)
-		return
+		logrus.Errorf("Failed to generate ICS data: %v", err)
+		return nil
 	}
+	return icsData
 
 	// 保存 .ics 文件到本地
-	err = os.WriteFile(fmt.Sprintf("%s/%s", c.Path, "notion_calendar.ics"), icsData, 0644)
-	if err != nil {
-		logrus.Infof("Failed to save ICS file: %v", err)
-		return
-	}
+	//err = os.WriteFile(fmt.Sprintf("%s/%s", c.Path, "notion_calendar.ics"), icsData, 0644)
+	//if err != nil {
+	//	logrus.Errorf("Failed to save ICS file: %v", err)
+	//	return
+	//}
 }
 
 func runServer(c Conf) {
 	http.HandleFunc("/calendar.ics", func(w http.ResponseWriter, r *http.Request) {
-		syncNotion(c)
-		path := fmt.Sprintf("%s/%s", exeDir, "notion_calendar.ics")
-		http.ServeFile(w, r, path)
+		b := syncNotion(c)
+		if _, err := w.Write(b); err != nil {
+			logrus.Errorf("Failed to write response: %v", err)
+		}
 	})
 
 	port := ":33189"
