@@ -57,21 +57,20 @@ func UpdatePageTime(client *notionapi.Client, pageID string, timePropName string
 	return err
 }
 
-func update(conf Conf) {
+func update(conf Conf) error {
+	var err error
+	defer func() {
+		logrus.Infof("Update default template end, err:%v", err)
+	}()
 	// 初始化Notion客户端
 	client := notionapi.NewClient(notionapi.Token(conf.Key))
 
 	// 执行创建操作
-	err := UpdatePageTime(
-		client,
-		conf.DefaultPageId,
-		"Time", // 替换为你的时间属性名称
-	)
+	err = UpdatePageTime(client, conf.DefaultPageId, "Time")
 	if err != nil {
 		logrus.Errorf("Update default template success failed, err:%v", err)
-		return
 	}
-	logrus.Infof("Update default template success")
+	return err
 }
 
 func runCron(conf Conf) {
@@ -87,17 +86,24 @@ func runCron(conf Conf) {
 	_, err := c.AddFunc(execTime, func() {
 		defer func() {
 			if r := recover(); r != nil {
-				logrus.Infof("定时任务执行失败: %v", r)
+				logrus.Infof("cron panic, err:%v", r)
 			}
 		}()
-		update(conf)
+		for {
+			if err := update(conf); err != nil {
+				time.Sleep(10 * time.Second)
+				continue
+			}
+			break
+		}
 	})
 
 	if err != nil {
-		logrus.Errorf("添加定时任务失败: %v", err)
+		logrus.Panicf("cron start failed, err:%v", err)
+		return
 	}
 
 	c.Start()
-	logrus.Infof("定时任务已启动，等待执行...")
+	logrus.Infof("cron start successfully")
 	select {}
 }

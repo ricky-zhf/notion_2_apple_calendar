@@ -140,21 +140,23 @@ func main() {
 
 	go runCron(conf)
 
+	_ = update(conf)
+
 	syncNotion(conf)
 	logrus.Infof("get notion end...")
 
-	go runServer()
-	logrus.Infof("start http end...")
-
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			syncNotion(conf)
-		}
-	}
+	go runServer(conf)
+	//logrus.Infof("start http end...")
+	//
+	//ticker := time.NewTicker(1 * time.Minute)
+	//defer ticker.Stop()
+	//
+	//for {
+	//	select {
+	//	case <-ticker.C:
+	//		syncNotion(conf)
+	//	}
+	//}
 }
 
 func syncNotion(c Conf) {
@@ -185,18 +187,14 @@ func syncNotion(c Conf) {
 		logrus.Infof("Failed to save ICS file: %v", err)
 		return
 	}
-	logrus.Infof("Notion file generated successfully.")
 }
 
-func serveICSFile(w http.ResponseWriter, r *http.Request) {
-	logrus.Infof("Get http sync req...")
-
-	path := fmt.Sprintf("%s/%s", exeDir, "notion_calendar.ics")
-	http.ServeFile(w, r, path)
-}
-
-func runServer() {
-	http.HandleFunc("/calendar.ics", serveICSFile)
+func runServer(c Conf) {
+	http.HandleFunc("/calendar.ics", func(w http.ResponseWriter, r *http.Request) {
+		syncNotion(c)
+		path := fmt.Sprintf("%s/%s", exeDir, "notion_calendar.ics")
+		http.ServeFile(w, r, path)
+	})
 
 	port := ":33189"
 	if isDev() {
