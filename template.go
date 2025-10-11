@@ -68,30 +68,32 @@ func update(conf Conf) error {
 	// 执行创建操作
 	err = UpdatePageTime(client, conf.DefaultPageId, "Time")
 	if err != nil {
-		logrus.Errorf("Update default template success failed, err:%v", err)
+		logrus.Errorf("Update default template failed, err:%v", err)
 	}
 	return err
 }
 
 func runCron(conf Conf) {
-	location, _ := time.LoadLocation("Asia/Shanghai")
+	location, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		logrus.Panicf("load location failed, err:%v", err)
+		return
+	}
 	c := cron.New(cron.WithLocation(location), cron.WithSeconds())
 
-	// 2. 添加定时任务（每天 0 点 1 分执行, 0 1 * * * *
-	// @every 1m
-	execTime := "0 1 0 * * *"
+	execTime := "0 0 0,2,4,6 * * *"
 	if isDev() {
 		execTime = "@every 1m"
 	}
-	_, err := c.AddFunc(execTime, func() {
+	_, err = c.AddFunc(execTime, func() {
 		defer func() {
 			if r := recover(); r != nil {
 				logrus.Infof("cron panic, err:%v", r)
 			}
 		}()
 		for {
-			if err := update(conf); err != nil {
-				time.Sleep(10 * time.Second)
+			if err = update(conf); err != nil {
+				time.Sleep(30 * time.Second)
 				continue
 			}
 			break

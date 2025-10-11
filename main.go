@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/sirupsen/logrus"
 
 	ical "github.com/arran4/golang-ical"
 )
@@ -31,64 +32,103 @@ type NotionDatabase struct {
 			} `json:"Time"`
 		} `json:"properties"`
 	} `json:"results"`
+	HasMore    bool   `json:"has_more"`
+	NextCursor string `json:"next_cursor"`
 }
 
-// NotionDatabase 定义 Notion 数据库响应结构
-//type NotionDatabase struct {
-//	Results []struct {
-//		Properties struct {
-//			Name struct {
-//				Title []struct {
-//					Text struct {
-//						Content string `json:"content"`
-//					} `json:"text"`
-//				} `json:"title"`
-//			} `json:"Name"`
-//			Start struct {
-//				Date struct {
-//					Start string `json:"start"`
-//				} `json:"date"`
-//			} `json:"Start"`
-//			End struct {
-//				Date struct {
-//					Start string `json:"start"`
-//				} `json:"date"`
-//			} `json:"End"`
-//		} `json:"properties"`
-//	} `json:"results"`
-//}
-
-// 获取 Notion 数据库数据
+// 获取 Notion 数据库数据（支持分页，只获取最近一个月的数据）
 func getNotionDatabaseData(token, databaseID string) (*NotionDatabase, error) {
 	url := fmt.Sprintf("https://api.notion.com/v1/databases/%s/query", databaseID)
-	req, err := http.NewRequest("POST", url, nil)
-	if err != nil {
-		return nil, err
+
+	var allResults []struct {
+		Properties struct {
+			Name struct {
+				Title []struct {
+					Text struct {
+						Content string `json:"content"`
+					} `json:"text"`
+				} `json:"title"`
+			} `json:"Name"`
+			Date struct {
+				Date struct {
+					Start string `json:"start"`
+					End   string `json:"end"`
+				} `json:"date"`
+			} `json:"Time"`
+		} `json:"properties"`
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
-	req.Header.Set("Notion-Version", "2022-06-28")
-	req.Header.Set("Content-Type", "application/json")
+	var startCursor string
+	hasMore := true
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
+	// 计算一个月前的日期
+	oneMonthAgo := time.Now().AddDate(0, -1, 0).Format("2006-01-02")
+
+	// 循环获取所有分页数据
+	for hasMore {
+		// 构建请求体，添加时间过滤器
+		requestBody := map[string]interface{}{
+			"filter": map[string]interface{}{
+				"property": "Time",
+				"date": map[string]interface{}{
+					"on_or_after": oneMonthAgo,
+				},
+			},
+		}
+
+		// 如果有游标，添加到请求体
+		if startCursor != "" {
+			requestBody["start_cursor"] = startCursor
+		}
+
+		bodyBytes, err := json.Marshal(requestBody)
+		if err != nil {
+			return nil, err
+		}
+
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(bodyBytes))
+		if err != nil {
+			return nil, err
+		}
+
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+		req.Header.Set("Notion-Version", "2022-06-28")
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+
+		var database NotionDatabase
+		err = json.Unmarshal(body, &database)
+		if err != nil {
+			return nil, err
+		}
+
+		// 将当前页的结果添加到总结果中
+		allResults = append(allResults, database.Results...)
+
+		// 更新分页信息
+		hasMore = database.HasMore
+		startCursor = database.NextCursor
+
+		logrus.Infof("已获取 %d 条记录，还有更多数据: %v", len(allResults), hasMore)
 	}
-	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var database NotionDatabase
-	err = json.Unmarshal(body, &database)
-	if err != nil {
-		return nil, err
-	}
-
-	return &database, nil
+	// 返回包含所有结果的数据库对象
+	return &NotionDatabase{
+		Results:    allResults,
+		HasMore:    false,
+		NextCursor: "",
+	}, nil
 }
 
 var (
@@ -137,7 +177,7 @@ func main() {
 
 	newApp()
 
-	go runCron(conf)
+	//go runCron(conf)
 
 	_ = update(conf)
 
@@ -193,6 +233,7 @@ func syncNotion(c Conf) []byte {
 
 func runServer(c Conf) {
 	http.HandleFunc("/calendar.ics", func(w http.ResponseWriter, r *http.Request) {
+		go update(c)
 		b := syncNotion(c)
 		if _, err := w.Write(b); err != nil {
 			logrus.Errorf("Failed to write response: %v", err)

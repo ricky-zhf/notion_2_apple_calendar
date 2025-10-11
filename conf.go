@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"sync"
 	"syscall"
 	"time"
@@ -64,10 +65,26 @@ func initLogger(path string) {
 	if err != nil {
 		logrus.Fatal("无法打开日志文件:", err)
 	}
+	sortKeys := []string{
+		"time",
+		"level",
+		"func",
+		"file",
+		"msg",
+	}
+	sortMap := make(map[string]int)
+	for i, key := range sortKeys {
+		sortMap[key] = i
+	}
 
 	logrus.SetOutput(file)
-	logrus.SetFormatter(&logrus.JSONFormatter{}) // JSON 格式
-	logrus.SetLevel(logrus.InfoLevel)            // 设置日志级别
+	logrus.SetFormatter(&logrus.TextFormatter{SortingFunc: func(strings []string) {
+		sort.Slice(strings, func(x, y int) bool {
+			return sortMap[strings[x]] < sortMap[strings[y]]
+		})
+	}})
+	logrus.SetLevel(logrus.InfoLevel) // 设置日志级别
+	logrus.SetReportCaller(true)      // 显示调用者信息
 
 	logFile = file
 	return
