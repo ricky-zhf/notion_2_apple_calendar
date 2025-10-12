@@ -58,3 +58,19 @@ func Test_generateICS(t *testing.T) {
 func Test_update(t *testing.T) {
 	//update("")
 }
+
+func Test_syncNotion(t *testing.T) {
+	// 从配置文件读取敏感信息
+	conf, err := InitConfig()
+	if err != nil {
+		t.Fatalf("Failed to init config: %v", err)
+	}
+
+	data, err := getNotionDatabaseData(conf.Key, conf.Databases)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	// 打印获取到的数据库数据
+	t.Logf("获取到 %d 条记录", len(data.Results))
+}

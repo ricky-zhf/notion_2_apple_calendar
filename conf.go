@@ -19,6 +19,9 @@ type Conf struct {
 	Path          string `json:"path"`
 	Databases     string `json:"databases"`
 	DefaultPageId string `json:"default_page_id"`
+	IcsFileName   string `json:"ics_file_name"`  // ICS 文件名，默认为 "calendar.ics"
+	AutoPushGit   bool   `json:"auto_push_git"`  // 是否自动推送到 GitHub
+	GitCommitMsg  string `json:"git_commit_msg"` // Git 提交信息，可选
 }
 
 var logFile *os.File
