@@ -162,12 +162,6 @@ func generateICS(c Conf, database *NotionDatabase) ([]byte, error) {
 				return nil, err
 			}
 			event.SetEndAt(end)
-
-			// 添加提醒：在事件开始前5分钟
-			alarm := event.AddAlarm()
-			alarm.SetAction(ical.ActionDisplay)
-			alarm.SetTrigger("-PT5M") // 负数表示事件开始前，PT5M = 5分钟
-			alarm.SetDescription("notion task: " + result.Properties.Name.Title[0].Text.Content)
 		}
 	}
 	var buf bytes.Buffer
